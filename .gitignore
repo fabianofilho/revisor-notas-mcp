@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.env
+
+# Este projeto processa texto de paciente. Nada de nota clínica versionado.
+*.nota
+notas/
