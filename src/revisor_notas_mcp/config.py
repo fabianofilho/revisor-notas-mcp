@@ -11,7 +11,7 @@ class Config(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    qwen_endpoint: str = Field(default="http://127.0.0.1:11434/v1")
+    qwen_endpoint: str = Field(default="http://127.0.0.1:8080/v1")
     qwen_model: str = Field(default="local-model")
     # Curto de propósito: a checagem semântica é um extra, não pode travar a tool.
     timeout_checagem_semantica_segundos: float = Field(default=15.0)

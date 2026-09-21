@@ -25,7 +25,7 @@ def _chat(conteudo: str) -> httpx.Response:
     "endpoint",
     [
         "https://api.openai.com/v1",
-        "http://192.0.2.50:8080/v1",
+        "http://192.0.2.50:8080/v1"  # faixa reservada para documentacao (RFC 5737),
         "http://llm.exemplo.com/v1",
     ],
 )
