@@ -1,7 +1,7 @@
 """Regras determinísticas sobre a nota SOAP.
 
 Cada regra é uma função pura de ``NotaSoap`` para ``list[Problema]``, testável
-isoladamente. Elas rodam sem LLM nenhum — se o modelo local estiver fora do ar, a
+isoladamente. Elas rodam sem LLM nenhum, se o modelo local estiver fora do ar, a
 validação por regras continua valendo.
 
 As regras seguem o template fixo da skill /clude.

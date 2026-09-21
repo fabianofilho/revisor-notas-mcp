@@ -2,7 +2,7 @@
 
 Servidor MCP que confere notas clínicas no formato SOAP (F/S/O/A/P): checa se os campos
 obrigatórios estão preenchidos e usa um LLM local para apontar incoerências entre queixa,
-exame e conduta. Roda inteiramente na sua máquina — o texto da nota não sai dela.
+exame e conduta. Roda inteiramente na sua máquina, o texto da nota não sai dela.
 
 > ### ⚠️ Não substitui o julgamento clínico
 >
@@ -22,7 +22,7 @@ exame e conduta. Roda inteiramente na sua máquina — o texto da nota não sai 
 | --- | --- | --- |
 | Python | 3.12+ | runtime |
 | [uv](https://docs.astral.sh/uv/) | recente | dependências e venv |
-| Um LLM local com API OpenAI-compatible | — | checagem semântica (opcional) |
+| Um LLM local com API OpenAI-compatible | - | checagem semântica (opcional) |
 
 Sem banco de dados: este projeto não persiste nada.
 
@@ -44,7 +44,7 @@ cp .env.example .env
 | `TIMEOUT_CHECAGEM_SEMANTICA_SEGUNDOS` | `15` | curto de propósito: a checagem não pode travar a resposta |
 
 **O endpoint precisa ser localhost.** Qualquer outro host é recusado com exceção, não com
-aviso — ver [Privacidade](#privacidade).
+aviso, ver [Privacidade](#privacidade).
 
 ```bash
 uv run revisor-cli llm                        # confirma o LLM local
@@ -92,7 +92,7 @@ Lista os problemas encontrados, cada um com seção, severidade, sugestão e a `
 ```
 
 Esse exemplo é a saída real de uma nota sintética de teste. Note que `total_erros` é zero:
-a nota está **formalmente correta** — as regras determinísticas passam limpo. O que a
+a nota está **formalmente correta**, as regras determinísticas passam limpo. O que a
 camada semântica aponta é clínico, e é exatamente o que regra não pega.
 
 ### `sugerir_correcoes(texto_nota: str)`
@@ -102,11 +102,11 @@ texto original**: quem decide o que mudar é quem assina.
 
 ## As duas camadas
 
-**Regras determinísticas** (`rules/`) — rodam sempre, sem LLM: cabeçalho, as cinco seções,
+**Regras determinísticas** (`rules/`) rodam sempre, sem LLM: cabeçalho, as cinco seções,
 CID em formato válido, itens numerados do plano, item de sinais de alarme, rodapé fixo, e
 os campos do subjetivo (medicações em uso, antecedentes, alergia, hábitos).
 
-**Checagem semântica** (`llm/`) — coerência entre queixa, exame e conduta; e sinais de
+**Checagem semântica** (`llm/`) olha coerência entre queixa, exame e conduta; e sinais de
 alarme típicos do diagnóstico que não aparecem como investigados (negativa explícita conta
 como investigado).
 
@@ -116,8 +116,8 @@ diz que a parte semântica não rodou. As regras nunca ficam bloqueadas pelo mod
 ## Limitações conhecidas
 
 **O parser espera um template específico.** Ele tolera variação de formatação (marcador
-com ou sem hífen, caixa baixa, espaço sobrando), mas as regras de conteúdo — quais campos
-são obrigatórios, qual rodapé, quais itens no plano — foram escritas para um template de
+com ou sem hífen, caixa baixa, espaço sobrando), mas as regras de conteúdo (quais campos
+são obrigatórios, qual rodapé, quais itens no plano) foram escritas para um template de
 telemedicina. Adaptar para outro formato significa mexer em `rules/checklist.py`.
 
 **A checagem semântica depende de um modelo pequeno.** Rodando local, ela custa alguns
@@ -127,7 +127,7 @@ segundos e a qualidade varia com o modelo. Um modelo fraco vai gerar falso posit
 dígitos, com subcategoria opcional), não se o código corresponde ao diagnóstico escrito.
 
 **Nada é cacheado.** Cada chamada reprocessa a nota do zero, porque cachear significaria
-guardar o texto — e isso o projeto não faz.
+guardar o texto, e isso o projeto não faz.
 
 ## Privacidade
 
@@ -152,7 +152,7 @@ fixture pode conter dado real de paciente**, nem anonimizado.
 
 ## Licença e atribuição
 
-[Apache License 2.0](LICENSE) — escolhida por o projeto tocar em dado de paciente, onde a
+[Apache License 2.0](LICENSE): escolhida por o projeto tocar em dado de paciente, onde a
 cláusula explícita de patente é mais protetiva.
 
 Construído no contexto do [IA.med](https://iamed.cc).

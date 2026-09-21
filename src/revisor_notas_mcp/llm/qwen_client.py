@@ -3,7 +3,7 @@
 Sem retry longo: a checagem semântica tem que caber no tempo de resposta da tool.
 Se o modelo não responder, a validação por regras segue valendo.
 
-Este módulo nunca registra em log o texto enviado — é nota de paciente.
+Este módulo nunca registra em log o texto enviado, é nota de paciente.
 """
 
 from __future__ import annotations

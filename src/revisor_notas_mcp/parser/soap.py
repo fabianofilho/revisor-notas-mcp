@@ -1,7 +1,7 @@
 """Separa a nota #TELEMEDICINA# nas seções F/S/O/A/P.
 
 Tolerante a variação de formatação: o marcador pode vir com ou sem hífen, com
-espaço sobrando, em caixa baixa. Seção ausente vira ``None`` em vez de erro — a
+espaço sobrando, em caixa baixa. Seção ausente vira ``None`` em vez de erro, a
 camada de regras é quem decide o que fazer com a falta.
 
 Nada aqui escreve em disco ou em log: o texto é de paciente.
