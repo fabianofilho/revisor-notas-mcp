@@ -11,9 +11,9 @@ from __future__ import annotations
 
 import logging
 from functools import lru_cache
-from pathlib import Path
+from importlib.resources import files
 
-from jinja2 import Environment, FileSystemLoader, select_autoescape
+from jinja2 import Environment, FunctionLoader, select_autoescape
 
 from revisor_notas_mcp.llm.qwen_client import LLMIndisponivel, QwenClient
 from revisor_notas_mcp.parser.soap import NotaSoap
@@ -22,14 +22,21 @@ from revisor_notas_mcp.rules.checklist import Problema
 logger = logging.getLogger(__name__)
 
 
-def diretorio_prompts() -> Path:
-    return Path(__file__).resolve().parents[3] / "prompts"
+PACOTE_PROMPTS = "revisor_notas_mcp.prompts"
+
+
+def _ler_prompt(nome: str) -> str | None:
+    """Lê o template de dentro do pacote, para funcionar também instalado pelo wheel."""
+    try:
+        return files(PACOTE_PROMPTS).joinpath(nome).read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return None  # o jinja2 converte em TemplateNotFound
 
 
 @lru_cache(maxsize=1)
 def _ambiente() -> Environment:
     return Environment(
-        loader=FileSystemLoader(diretorio_prompts()),
+        loader=FunctionLoader(_ler_prompt),
         autoescape=select_autoescape(default=False, default_for_string=False),
     )
 
