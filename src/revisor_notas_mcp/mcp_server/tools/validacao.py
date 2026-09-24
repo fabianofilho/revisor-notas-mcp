@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 from revisor_notas_mcp.llm.checagem_semantica import checar
 from revisor_notas_mcp.llm.qwen_client import EndpointNaoLocal, QwenClient
-from revisor_notas_mcp.parser.soap import SECOES, parse
+from revisor_notas_mcp.parser.soap import SECOES, letra_do_marcador, parse
 from revisor_notas_mcp.rules.checklist import Problema, validar
 
 logger = logging.getLogger(__name__)
@@ -21,7 +21,10 @@ class RespostaValidacao(BaseModel):
     total_avisos: int
     problemas: list[Problema]
     checagem_semantica_feita: bool = Field(
-        description="False quando o LLM local não respondeu; as regras valeram assim mesmo"
+        description=(
+            "False quando a semântica não rodou (motivo em motivo_semantica_pulada); "
+            "as regras valeram assim mesmo"
+        )
     )
     motivo_semantica_pulada: str | None = None
     aviso: str | None = None
@@ -31,8 +34,9 @@ class RespostaCorrecoes(BaseModel):
     """A nota com anotações inline, sem reescrever o texto original."""
 
     nota_anotada: str
-    total_anotacoes: int
+    total_anotacoes: int = Field(description="Número de problemas; cada um aparece uma vez")
     checagem_semantica_feita: bool
+    motivo_semantica_pulada: str | None = None
     aviso: str | None = None
 
 
@@ -41,9 +45,76 @@ AVISO_SEMANTICA = (
     "probabilísticas: leia como sugestão de revisão, não como veredito clínico."
 )
 AVISO_SEM_LLM = (
-    "O LLM local não respondeu, então só as regras determinísticas rodaram. "
-    "Coerência e sinais de alarme não foram checados."
+    "A checagem semântica não rodou ({motivo}), então só as regras determinísticas "
+    "valeram. Coerência e sinais de alarme não foram checados."
 )
+
+
+def _aviso(semantica_feita: bool, motivo: str | None) -> str:
+    """O aviso diz o motivo real, em vez de culpar sempre o LLM."""
+    if semantica_feita:
+        return AVISO_SEMANTICA
+    return AVISO_SEM_LLM.format(motivo=motivo or "motivo não informado")
+
+
+def _letras(secao: str) -> list[str]:
+    """'F, A, P', 'a', 'A: Avaliação' viram letras de seção; 'nota' vira lista vazia."""
+    letras: list[str] = []
+    for parte in secao.split(","):
+        letra = parte.strip().lstrip("-–—").strip()[:1].upper()
+        if parte.strip().lower() != "nota" and letra in SECOES and letra not in letras:
+            letras.append(letra)
+    return letras
+
+
+def _formatar(problema: Problema, *, com_secao: bool = False) -> str:
+    marca = "ERRO" if problema.severidade == "erro" else "AVISO"
+    rotulo = f" [{problema.secao}]" if com_secao else ""
+    sufixo = f" → {problema.sugestao}" if problema.sugestao else ""
+    return f"    <<{marca}{rotulo}: {problema.descricao}{sufixo}>>"
+
+
+def anotar(texto_nota: str, problemas: list[Problema]) -> str:
+    """Insere cada problema uma única vez, sem alterar nenhuma linha original.
+
+    O problema vai para o fim da primeira seção que ele cita e que existe na nota
+    (mesmo critério de marcador do parser). O que não tem seção na nota (seção
+    ausente, problema do documento, seção que o LLM devolveu fora do padrão) vai
+    para o bloco <<PROBLEMAS NO DOCUMENTO>> no topo, para nada se perder.
+    """
+    linhas = texto_nota.splitlines()
+    marcadores = [(i, letra_do_marcador(linha)) for i, linha in enumerate(linhas)]
+    inicios = [i for i, letra in marcadores if letra is not None]
+
+    # Fim de cada seção: a linha antes do próximo marcador, ignorando linhas em branco.
+    fim_da_secao: dict[str, int] = {}
+    for posicao, (inicio, letra) in enumerate((i, x) for i, x in marcadores if x is not None):
+        if letra in fim_da_secao:
+            continue  # marcador repetido: vale o primeiro, como no parser
+        proximo = inicios[posicao + 1] if posicao + 1 < len(inicios) else len(linhas)
+        fim = proximo - 1
+        while fim > inicio and not linhas[fim].strip():
+            fim -= 1
+        fim_da_secao[letra] = fim
+
+    abaixo_de: dict[int, list[Problema]] = {}
+    gerais: list[Problema] = []
+    for problema in problemas:
+        presentes = [letra for letra in _letras(problema.secao) if letra in fim_da_secao]
+        if presentes:
+            abaixo_de.setdefault(fim_da_secao[presentes[0]], []).append(problema)
+        else:
+            gerais.append(problema)
+
+    saida: list[str] = []
+    if gerais:
+        saida.append("<<PROBLEMAS NO DOCUMENTO>>")
+        saida.extend(_formatar(p, com_secao=p.secao != "nota") for p in gerais)
+    for indice, linha in enumerate(linhas):
+        saida.append(linha)
+        for problema in abaixo_de.get(indice, []):
+            saida.append(_formatar(problema, com_secao=len(_letras(problema.secao)) > 1))
+    return "\n".join(saida)
 
 
 async def _problemas(
@@ -95,6 +166,8 @@ async def validar_nota_soap(
             total_avisos=0,
             problemas=[Problema(secao="nota", severidade="erro", descricao="Nota vazia.")],
             checagem_semantica_feita=False,
+            motivo_semantica_pulada="nota vazia",
+            aviso=_aviso(False, "nota vazia"),
         )
 
     problemas, semantica_feita, motivo = await _problemas(
@@ -110,7 +183,7 @@ async def validar_nota_soap(
         problemas=problemas,
         checagem_semantica_feita=semantica_feita,
         motivo_semantica_pulada=motivo,
-        aviso=AVISO_SEMANTICA if semantica_feita else AVISO_SEM_LLM,
+        aviso=_aviso(semantica_feita, motivo),
     )
 
 
@@ -123,7 +196,7 @@ async def sugerir_correcoes(
     usar_llm: bool = True,
 ) -> RespostaCorrecoes:
     """Devolve a nota com anotações inline. Não reescreve o texto original."""
-    problemas, semantica_feita, _ = await _problemas(
+    problemas, semantica_feita, motivo = await _problemas(
         texto_nota,
         qwen_endpoint=qwen_endpoint,
         qwen_model=qwen_model,
@@ -131,29 +204,10 @@ async def sugerir_correcoes(
         usar_llm=usar_llm,
     )
 
-    por_secao: dict[str, list[Problema]] = {}
-    for problema in problemas:
-        por_secao.setdefault(problema.secao, []).append(problema)
-
-    linhas: list[str] = []
-    for linha in texto_nota.splitlines():
-        linhas.append(linha)
-        marcador = linha.strip().lstrip("-").strip()[:1].upper()
-        if marcador in SECOES:
-            for problema in por_secao.get(marcador, []):
-                marca = "ERRO" if problema.severidade == "erro" else "AVISO"
-                sufixo = f" → {problema.sugestao}" if problema.sugestao else ""
-                linhas.append(f"    <<{marca}: {problema.descricao}{sufixo}>>")
-
-    gerais = por_secao.get("nota", [])
-    if gerais:
-        linhas.insert(0, "<<PROBLEMAS NO DOCUMENTO>>")
-        for indice, problema in enumerate(gerais, start=1):
-            linhas.insert(indice, f"    <<{problema.severidade.upper()}: {problema.descricao}>>")
-
     return RespostaCorrecoes(
-        nota_anotada="\n".join(linhas),
+        nota_anotada=anotar(texto_nota, problemas),
         total_anotacoes=len(problemas),
         checagem_semantica_feita=semantica_feita,
-        aviso=AVISO_SEMANTICA if semantica_feita else AVISO_SEM_LLM,
+        motivo_semantica_pulada=motivo,
+        aviso=_aviso(semantica_feita, motivo),
     )
