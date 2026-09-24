@@ -24,9 +24,12 @@ exame e conduta. Roda inteiramente na sua máquina, o texto da nota não sai del
 | [uv](https://docs.astral.sh/uv/) | recente | dependências e venv |
 | Um LLM local com API OpenAI-compatible | - | checagem semântica (opcional) |
 
-Sem banco de dados: este projeto não persiste nada.
+Sem banco de dados, sem sync e sem timer systemd: este projeto não persiste nada e só roda
+quando o cliente MCP chama uma tool.
 
 ## Instalação
+
+A distribuição é por clone + `uv` (não há pacote no PyPI).
 
 ```bash
 git clone https://github.com/fabianofilho/revisor-notas-mcp.git
@@ -97,8 +100,33 @@ camada semântica aponta é clínico, e é exatamente o que regra não pega.
 
 ### `sugerir_correcoes(texto_nota: str)`
 
-A mesma nota com linhas `<<AVISO: ...>>` inseridas abaixo de cada seção. **Não reescreve o
-texto original**: quem decide o que mudar é quem assina.
+A mesma nota com os problemas de `validar_nota_soap` inseridos como linhas `<<ERRO: ...>>`
+ou `<<AVISO: ...>>`. **Não reescreve o texto original**: nenhuma linha da nota é alterada,
+e quem decide o que mudar é quem assina.
+
+- Cada problema aparece **uma única vez**, no fim da seção a que se refere. Um achado da
+  camada semântica que cita várias seções vai para a primeira delas que existe na nota,
+  com as seções entre colchetes, por exemplo `<<AVISO [F, A, P]: ...>>`.
+- O que não tem onde ficar (cabeçalho ausente, seção ausente ou vazia sem marcador,
+  seção fora do padrão) vai para um bloco `<<PROBLEMAS NO DOCUMENTO>>` no topo.
+- `total_anotacoes` é o número de problemas, igual ao número de linhas `<<...>>` fora o
+  título do bloco.
+
+```text
+<<PROBLEMAS NO DOCUMENTO>>
+    <<ERRO [O]: Seção -O: ausente ou vazia. → Preencha a seção -O: conforme o template.>>
+#TELEMEDICINA#
+-F: Paciente refere cefaleia. Sem sinais de alarme.
+...
+-A: Cefaleia tensional (CID: R51).
+-P:
+1. Dipirona 500mg via oral se dor.
+...
+Atendimento realizado via telemedicina, não sendo possível aferição de sinais vitais.
+    <<AVISO: Plano sem os itens numerados [2, 4, 5]. → O template prevê os itens 1 a 5, sendo o 5 o do atestado.>>
+```
+
+Saída real (sem LLM) de uma nota sintética de teste, com linhas omitidas.
 
 ## As duas camadas
 
@@ -110,8 +138,11 @@ os campos do subjetivo (medicações em uso, antecedentes, alergia, hábitos).
 alarme típicos do diagnóstico que não aparecem como investigados (negativa explícita conta
 como investigado).
 
-Se o LLM local estiver fora do ar, a validação por regras responde sozinha e a resposta
-diz que a parte semântica não rodou. As regras nunca ficam bloqueadas pelo modelo.
+Se o LLM local estiver fora do ar (ou der timeout, ou devolver algo que não é JSON), a
+validação por regras responde sozinha: `checagem_semantica_feita` vem `false` e
+`motivo_semantica_pulada` diz o porquê. As regras nunca ficam bloqueadas pelo modelo.
+
+Os prompts do LLM estão em `src/revisor_notas_mcp/prompts/` e fazem parte do pacote.
 
 ## Limitações conhecidas
 
@@ -144,6 +175,11 @@ Este é o ponto central do projeto, e ele está em código e em teste, não só 
 
 O que sai da sua máquina: nada. O que vai para o seu LLM local: o texto da nota, pelo
 `localhost`.
+
+## Segurança
+
+Veja [SECURITY.md](SECURITY.md) para reportar uma vulnerabilidade. As mudanças por versão
+estão no [CHANGELOG.md](CHANGELOG.md).
 
 ## Contribuindo
 
