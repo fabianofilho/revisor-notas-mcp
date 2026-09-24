@@ -36,7 +36,7 @@ async def validar_nota_soap(texto_nota: str) -> RespostaValidacao:
     determinísticas, e usa o LLM local para conferir coerência entre queixa,
     exame e conduta, além de sinais de alarme não investigados. A parte do LLM é
     probabilística e vem marcada como tal; se ele estiver fora do ar, as regras
-    respondem sozinhas.
+    respondem sozinhas e motivo_semantica_pulada diz por que a semântica não rodou.
 
     O texto processado não sai da máquina nem é gravado em lugar nenhum.
 
@@ -56,8 +56,11 @@ async def validar_nota_soap(texto_nota: str) -> RespostaValidacao:
 async def sugerir_correcoes(texto_nota: str) -> RespostaCorrecoes:
     """Devolve a nota com anotações inline do que precisa ser ajustado.
 
-    Não reescreve o texto original: cada problema vira uma linha <<AVISO: ...>>
-    logo abaixo da seção correspondente, para o médico decidir o que mudar.
+    Não reescreve o texto original: cada problema de validar_nota_soap vira uma
+    linha <<ERRO: ...>> ou <<AVISO: ...>>, uma única vez, no fim da seção a que
+    se refere. O que não tem seção na nota (cabeçalho, seção ausente) vai para
+    um bloco <<PROBLEMAS NO DOCUMENTO>> no topo. Quem decide o que mudar é o
+    médico.
 
     Args:
         texto_nota: a nota completa a ser anotada.

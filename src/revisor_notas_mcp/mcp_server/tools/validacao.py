@@ -50,6 +50,9 @@ AVISO_SEM_LLM = (
 )
 
 
+NOTA_VAZIA = Problema(secao="nota", severidade="erro", descricao="Nota vazia.")
+
+
 def _aviso(semantica_feita: bool, motivo: str | None) -> str:
     """O aviso diz o motivo real, em vez de culpar sempre o LLM."""
     if semantica_feita:
@@ -61,7 +64,7 @@ def _letras(secao: str) -> list[str]:
     """'F, A, P', 'a', 'A: Avaliação' viram letras de seção; 'nota' vira lista vazia."""
     letras: list[str] = []
     for parte in secao.split(","):
-        letra = parte.strip().lstrip("-–—").strip()[:1].upper()
+        letra = parte.strip().lstrip("-\u2013\u2014").strip()[:1].upper()
         if parte.strip().lower() != "nota" and letra in SECOES and letra not in letras:
             letras.append(letra)
     return letras
@@ -164,7 +167,7 @@ async def validar_nota_soap(
         return RespostaValidacao(
             total_erros=1,
             total_avisos=0,
-            problemas=[Problema(secao="nota", severidade="erro", descricao="Nota vazia.")],
+            problemas=[NOTA_VAZIA],
             checagem_semantica_feita=False,
             motivo_semantica_pulada="nota vazia",
             aviso=_aviso(False, "nota vazia"),
@@ -196,6 +199,15 @@ async def sugerir_correcoes(
     usar_llm: bool = True,
 ) -> RespostaCorrecoes:
     """Devolve a nota com anotações inline. Não reescreve o texto original."""
+    if not texto_nota.strip():
+        return RespostaCorrecoes(
+            nota_anotada=anotar(texto_nota, [NOTA_VAZIA]),
+            total_anotacoes=1,
+            checagem_semantica_feita=False,
+            motivo_semantica_pulada="nota vazia",
+            aviso=_aviso(False, "nota vazia"),
+        )
+
     problemas, semantica_feita, motivo = await _problemas(
         texto_nota,
         qwen_endpoint=qwen_endpoint,

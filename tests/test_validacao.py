@@ -185,9 +185,9 @@ async def test_cada_problema_aparece_exatamente_uma_vez(nota: str) -> None:
 
     anotadas = [a for a in _anotacoes(resposta.nota_anotada) if a != "<<PROBLEMAS NO DOCUMENTO>>"]
     assert len(anotadas) == resposta.total_anotacoes
-    if nota.strip():
-        for problema in validacao.problemas:
-            assert sum(problema.descricao in a for a in anotadas) == 1, problema.descricao
+    assert resposta.total_anotacoes == len(validacao.problemas)
+    for problema in validacao.problemas:
+        assert sum(problema.descricao in a for a in anotadas) == 1, problema.descricao
     for linha in nota.splitlines():
         assert linha in resposta.nota_anotada
 
