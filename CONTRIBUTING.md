@@ -16,8 +16,13 @@ uv run ruff format .     # formatacao
 uv run mypy              # tipos
 ```
 
-Os testes rodam **offline**: as respostas das APIs externas estao mockadas com `respx`, e
-as fixtures foram capturadas de respostas reais. Nao e preciso rede nem LLM para testar.
+Os testes rodam **offline**. O projeto nao chama nenhuma API externa: a unica rede e o
+LLM local, e as respostas dele sao mockadas com `respx`. As notas usadas nos testes
+(`tests/fixtures/`) sao 100% sinteticas, escritas para o teste. Nao e preciso rede nem
+LLM para testar.
+
+Os prompts do LLM ficam em `src/revisor_notas_mcp/prompts/` e entram no wheel. Se mexer
+neles, confira com `uv build` que continuam empacotados.
 
 ## Padrao de commit
 

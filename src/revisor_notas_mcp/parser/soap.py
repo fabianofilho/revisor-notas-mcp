@@ -39,6 +39,12 @@ class NotaSoap:
         return [letra for letra in SECOES if not (self.secao(letra) or "").strip()]
 
 
+def letra_do_marcador(linha: str) -> str | None:
+    """A letra da seção se a linha abre uma seção (mesmo critério do ``parse``)."""
+    achado = _MARCADOR.match(linha)
+    return achado.group(1).upper() if achado else None
+
+
 def parse(texto: str) -> NotaSoap:
     """Separa o texto nas seções. Nunca levanta por formatação ruim."""
     bruto = texto.strip()

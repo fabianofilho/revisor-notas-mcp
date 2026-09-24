@@ -6,9 +6,21 @@ import httpx
 import pytest
 import respx
 
+from revisor_notas_mcp.llm.checagem_semantica import _render
 from revisor_notas_mcp.llm.qwen_client import EndpointNaoLocal, exigir_endpoint_local
-from revisor_notas_mcp.mcp_server.tools.validacao import sugerir_correcoes, validar_nota_soap
-from tests.fixtures import NOTA_COMPLETA, NOTA_SEM_CID
+from revisor_notas_mcp.mcp_server.tools.validacao import (
+    anotar,
+    sugerir_correcoes,
+    validar_nota_soap,
+)
+from revisor_notas_mcp.rules.checklist import Problema
+from tests.fixtures import (
+    NOTA_COMPLETA,
+    NOTA_FORMATACAO_SOLTA,
+    NOTA_SEM_CABECALHO,
+    NOTA_SEM_CID,
+    NOTA_SEM_OBJETIVO,
+)
 
 LOCAL = "http://127.0.0.1:11434/v1"
 MODELO = "modelo-de-teste"
@@ -146,3 +158,124 @@ async def test_anotacoes_preservam_o_texto_original() -> None:
         assert linha in resposta.nota_anotada
     assert "<<ERRO:" in resposta.nota_anotada
     assert resposta.total_anotacoes >= 1
+
+
+def _anotacoes(nota_anotada: str) -> list[str]:
+    return [linha for linha in nota_anotada.splitlines() if linha.strip().startswith("<<")]
+
+
+@pytest.mark.parametrize(
+    "nota",
+    [
+        NOTA_SEM_CID,
+        NOTA_SEM_OBJETIVO,
+        NOTA_SEM_CABECALHO,
+        NOTA_FORMATACAO_SOLTA,
+        "",
+        "texto qualquer sem soap",
+    ],
+)
+async def test_cada_problema_aparece_exatamente_uma_vez(nota: str) -> None:
+    """Regressão: a anotação se repetia em toda linha iniciada por F/S/O/A/P
+    (AP:, AF:, Alergia:, Paciente ciente...) e sumia com seção ausente."""
+    validacao = await validar_nota_soap(
+        nota, qwen_endpoint=LOCAL, qwen_model=MODELO, usar_llm=False
+    )
+    resposta = await sugerir_correcoes(nota, qwen_endpoint=LOCAL, qwen_model=MODELO, usar_llm=False)
+
+    anotadas = [a for a in _anotacoes(resposta.nota_anotada) if a != "<<PROBLEMAS NO DOCUMENTO>>"]
+    assert len(anotadas) == resposta.total_anotacoes
+    assert resposta.total_anotacoes == len(validacao.problemas)
+    for problema in validacao.problemas:
+        assert sum(problema.descricao in a for a in anotadas) == 1, problema.descricao
+    for linha in nota.splitlines():
+        assert linha in resposta.nota_anotada
+
+
+async def test_nota_sem_cid_anota_so_abaixo_da_avaliacao() -> None:
+    resposta = await sugerir_correcoes(
+        NOTA_SEM_CID, qwen_endpoint=LOCAL, qwen_model=MODELO, usar_llm=False
+    )
+    linhas = resposta.nota_anotada.splitlines()
+    indice = next(i for i, linha in enumerate(linhas) if "Nenhum CID" in linha)
+    assert linhas[indice - 1].startswith("-A:")
+    assert resposta.nota_anotada.count("<<") == 1
+
+
+async def test_secao_ausente_vai_para_o_bloco_do_documento() -> None:
+    resposta = await sugerir_correcoes(
+        NOTA_SEM_OBJETIVO, qwen_endpoint=LOCAL, qwen_model=MODELO, usar_llm=False
+    )
+    topo = resposta.nota_anotada.splitlines()[:2]
+    assert topo[0] == "<<PROBLEMAS NO DOCUMENTO>>"
+    assert "Seção -O: ausente" in topo[1]
+
+
+@pytest.mark.parametrize(
+    ("secao", "abaixo_de"),
+    [
+        ("F, A, P", "-F:"),
+        ("a", "-A:"),
+        ("A: Avaliação", "-A:"),
+        (" P ", "-P:"),
+    ],
+)
+def test_secao_do_llm_fora_do_padrao_e_normalizada(secao: str, abaixo_de: str) -> None:
+    problema = Problema(secao=secao, severidade="aviso", descricao="incoerência sintética")
+    anotada = anotar(NOTA_COMPLETA, [problema])
+    assert anotada.count("incoerência sintética") == 1
+    assert "PROBLEMAS NO DOCUMENTO" not in anotada
+    linhas = anotada.splitlines()
+    indice = next(i for i, linha in enumerate(linhas) if "incoerência sintética" in linha)
+    marcadores = [
+        linha for linha in linhas[:indice] if linha[:3] in {"-F:", "-S:", "-O:", "-A:", "-P:"}
+    ]
+    assert marcadores[-1].startswith(abaixo_de)
+
+
+def test_secao_desconhecida_nao_some() -> None:
+    problema = Problema(secao="X", severidade="aviso", descricao="achado sem seção")
+    anotada = anotar(NOTA_COMPLETA, [problema])
+    assert anotada.splitlines()[0] == "<<PROBLEMAS NO DOCUMENTO>>"
+    assert anotada.count("achado sem seção") == 1
+
+
+@respx.mock
+async def test_incoerencia_multisecao_aparece_na_nota_anotada() -> None:
+    """O achado mais importante (incoerência clínica) não pode sumir da anotação."""
+    respx.get(f"{LOCAL}/models").mock(return_value=httpx.Response(200, json={"data": []}))
+    respx.post(f"{LOCAL}/chat/completions").mock(
+        side_effect=[
+            _chat(
+                '{"incoerencias": [{"descricao": "Conduta trata outra coisa",'
+                ' "secoes": ["F", "A", "P"]}]}'
+            ),
+            _chat('{"esperados": [], "mencionados": [], "ausentes": ["estridor"]}'),
+        ]
+    )
+    resposta = await sugerir_correcoes(NOTA_COMPLETA, qwen_endpoint=LOCAL, qwen_model=MODELO)
+
+    assert resposta.checagem_semantica_feita is True
+    assert resposta.total_anotacoes == 2
+    assert resposta.nota_anotada.count("Conduta trata outra coisa") == 1
+    assert "<<AVISO [F, A, P]: Conduta trata outra coisa" in resposta.nota_anotada
+    assert resposta.nota_anotada.count("estridor") == 1
+
+
+# --- prompts e aviso -------------------------------------------------------
+
+
+@pytest.mark.parametrize("nome", ["checar_consistencia.jinja2", "checar_sinais_alarme.jinja2"])
+def test_prompts_vem_de_dentro_do_pacote(nome: str) -> None:
+    """Os prompts precisam estar no pacote, senão o wheel instalado dá TemplateNotFound."""
+    assert "JSON" in _render(nome)
+
+
+async def test_aviso_diz_o_motivo_real() -> None:
+    """Semântica desligada não pode virar 'o LLM não respondeu'."""
+    resposta = await validar_nota_soap(
+        NOTA_SEM_CID, qwen_endpoint=LOCAL, qwen_model=MODELO, usar_llm=False
+    )
+    assert resposta.aviso is not None
+    assert "desligada" in resposta.aviso
+    assert "não respondeu" not in resposta.aviso

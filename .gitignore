@@ -6,6 +6,10 @@ __pycache__/
 .ruff_cache/
 .mypy_cache/
 .env
+dist/
+
+# Estado local do Claude Code (worktrees, configuracao da sessao)
+.claude/
 
 # Este projeto processa texto de paciente. Nada de nota clínica versionado.
 *.nota
