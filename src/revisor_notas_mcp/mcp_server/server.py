@@ -12,6 +12,7 @@ import sys
 from mcp.server.mcpserver import MCPServer
 
 from revisor_notas_mcp.config import carregar_config
+from revisor_notas_mcp.mcp_server.capacidades import esconder_o_que_nao_existe
 from revisor_notas_mcp.mcp_server.tools.validacao import (
     RespostaCorrecoes,
     RespostaValidacao,
@@ -76,6 +77,9 @@ async def sugerir_correcoes(texto_nota: str) -> RespostaCorrecoes:
 
 def main() -> None:
     """Sobe o servidor MCP no stdio."""
+    # Este servidor so tem tools. Anunciar prompts e resources faria quem
+    # mapeia o servidor gastar chamadas para descobrir lista vazia.
+    esconder_o_que_nao_existe(mcp)
     config = carregar_config()
     logging.basicConfig(
         level=getattr(logging, config.log_level.upper(), logging.INFO),
