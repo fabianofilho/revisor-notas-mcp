@@ -6,10 +6,13 @@ nenhuma mensagem inclui conteúdo da nota.
 
 from __future__ import annotations
 
+import base64
 import logging
 import sys
+from pathlib import Path
 
 from mcp.server.mcpserver import MCPServer
+from mcp.types import Icon
 
 from revisor_notas_mcp.config import carregar_config
 from revisor_notas_mcp.mcp_server.capacidades import esconder_o_que_nao_existe
@@ -26,10 +29,22 @@ from revisor_notas_mcp.mcp_server.tools.validacao import (
 
 logger = logging.getLogger(__name__)
 
-mcp = MCPServer("revisor-notas-mcp", version="0.1.0")
+# Ícone do servidor e das tools, no molde da família (ecg-mcp): o robô do IA.med
+# com nota com check no visor. Em data URI, e não URL: o cliente precisa ver o
+# ícone antes de autenticar, e o endereço do Funnel é um só para todos os servidores.
+ICONE = [
+    Icon(
+        src="data:image/svg+xml;base64,"
+        + base64.b64encode((Path(__file__).parent / "icone.svg").read_bytes()).decode(),
+        mimeType="image/svg+xml",
+        sizes=["any"],
+    )
+]
+
+mcp = MCPServer("revisor-notas-mcp", version="0.1.0", icons=ICONE)
 
 
-@mcp.tool()
+@mcp.tool(icons=ICONE)
 async def validar_nota_soap(texto_nota: str) -> RespostaValidacao:
     """Valida uma nota clínica no formato #TELEMEDICINA# (F/S/O/A/P).
 
@@ -53,7 +68,7 @@ async def validar_nota_soap(texto_nota: str) -> RespostaValidacao:
     )
 
 
-@mcp.tool()
+@mcp.tool(icons=ICONE)
 async def sugerir_correcoes(texto_nota: str) -> RespostaCorrecoes:
     """Devolve a nota com anotações inline do que precisa ser ajustado.
 
